@@ -86,11 +86,13 @@ static FILE *sf_ref_out = NULL;  // XPS_REF_DAT data.
 static uint8_t *s_pcg_dat;  // Allocated to the max sprite count.
 static int s_pcg_count = 0;
 static uint32_t s_frm_offs = 0;
+static int s_ref_count = 0;
 
 static bool init_file_handles(ConvMode mode, const char *outname)
 {
 	s_pcg_count = 0;
 	s_frm_offs = 0;
+	s_ref_count = 0;
 
 	char fname_buffer[256];
 
@@ -356,6 +358,7 @@ static void add_ref_dat(uint16_t sp_count, uint32_t frm_offs)
 	fwrite_uint16be(sp_count, sf_ref_out);
 	fwrite_uint32be(frm_offs, sf_ref_out);
 	fwrite_uint16be(0x0000, sf_ref_out);  // Reserved / padding.
+	s_ref_count++;
 }
 
 static void add_frm_dat(int16_t vx, int16_t vy, uint16_t pt, uint16_t rv)
@@ -395,7 +398,7 @@ static int find_pcg_dat(const uint8_t *src)
 static bool claim(const uint8_t *imgdat, int iw, int ih, int sx, int sy, int sw, int sh,
                   int *col, int *row)
 {
-	printf("claiming from image of %dx%d: %d,%d size %dx%d\n", iw, ih, sx, sy, sw, sh);
+//	printf("claiming from image of %dx%d: %d,%d size %dx%d\n", iw, ih, sx, sy, sw, sh);
 	// Find the topmost row.
 	*row = -1;
 	for (int y = sy; y < sy + sh; y++)
@@ -529,7 +532,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	// 4) Erase the 16x16 image data from imgdat (set it to zero)
 	// 5) Increment s_frm_offs.
 
-	render_region(imgdat, iw, ih, sx, sy, sw, sh);
+//	render_region(imgdat, iw, ih, sx, sy, sw, sh);
 
 	int clip_x, clip_y;
 	int last_vx = 0;
@@ -558,7 +561,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 		const int vx = ((clip_x % sw) - ox);
 		const int vy = ((clip_y % sh) - oy);
 		add_frm_dat(vx - last_vx, vy - last_vy, pt_idx, 0);
-		render_region(imgdat, iw, ih, sx, sy, sw, sh);
+//		render_region(imgdat, iw, ih, sx, sy, sw, sh);
 		last_vx = vx;
 		last_vy = vy;
 	}
@@ -625,7 +628,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		printf("Used %d PCG tiles for %d sprites.\n", s_pcg_count, s_frm_offs);
+		printf("Used %d PCG tiles for %d refs, for %d sprites.\n", s_pcg_count, s_frm_offs / 8, s_ref_count);
 	}
 
 	fwrite(s_pcg_dat, 128, s_pcg_count, sf_pcg_out);
