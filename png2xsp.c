@@ -1,8 +1,18 @@
-// Utility to load an indexed-color PNG file and emit XOBJ_FRM_DAT and
-// XOBJ_REF_DAT files.
+// png2xsp
+// (c) 2022 Michael Moffitt
+//
+// Utility to convert a spritesheet PNG into data for use with XSP.
+// See https://yosshin4004.github.io/x68k/xsp/index.html for information on the
+// usage and theory of operation of the XSP library.
+//
+// Usage:
+//
+//     png2xsp spritesheet.png frame_width frame_height output_name <origin>
+//
+// <orgin> is a set of two characters that indicate where (0, 0) lies. It is an
+// optional argument; without it, the default is "cc", for centering in X and Y.
 //
 // Some notes on XSP:
-//
 // XSP is initialized with data passed in by the user. This data contains:
 // * Sprite PCG texture data (XSP, SP)
 // * Metasprite definition data (FRM)
@@ -142,33 +152,12 @@ static void fwrite_uint32be(uint32_t val, FILE *f)
 // Configuration and init sanity
 //
 
-static ConvMode conv_mode_from_args(int argc, char **argv)
-{
-	if (argc < 6) return CONV_MODE_DEFAULT;
-	const char arg = argv[5][0];
-	switch (arg)
-	{
-		case 'a':
-		case 'A':
-			return CONV_MODE_AUTO;
-		case 'x':
-		case 'X':
-			return CONV_MODE_XOBJ;
-		case 's':
-		case 'S':
-			return CONV_MODE_SP;
-		default:
-			printf("Unrecognized mode \'%c\'; using CONV_MODE_AUTO.\n", arg);
-			return CONV_MODE_AUTO;
-	}
-}
-
 static ConvOrigin conv_origin_from_args(int argc, char **argv)
 {
 	ConvOrigin ret = CONV_ORIGIN_DEFAULT;
-	if (argc < 7) return ret;
-	const char *argstr = argv[6];
-	if (strlen(argv[6]) < 2)
+	if (argc < 6) return ret;
+	const char *argstr = argv[5];
+	if (strlen(argstr) < 2)
 	{
 		printf("Warning: Invalid origin '%s'; need two characters.\n", argstr);
 		return ret;
@@ -304,11 +293,10 @@ static ConvOrigin conv_origin_from_args(int argc, char **argv)
 
 static void show_usage(const char *prog_name)
 {
-	printf("Usage: %s sprites.png w h outname <m=a> <o=cc>\n", prog_name);
+	printf("Usage: %s sprites.png w h outname <o>\n", prog_name);
 	printf("      w: Width of sprite within spritesheet (decimal or hex)\n");
 	printf("      h: Height of sprite within spritesheet (decimal or hex)\n");
 	printf("outname: Base file path and name for output.\n");
-	printf("      m: Mode (a = auto, x = xobj, s = sp)\n");
 	printf("      o: Origin (XY, where both characters form an argument\n");
 	printf("         t/l: top/left\n");
 	printf("           c: center\n");
@@ -407,6 +395,7 @@ static int find_pcg_dat(const uint8_t *src)
 static bool claim(const uint8_t *imgdat, int iw, int ih, int sx, int sy, int sw, int sh,
                   int *col, int *row)
 {
+	printf("claiming from image of %dx%d: %d,%d size %dx%d\n", iw, ih, sx, sy, sw, sh);
 	// Find the topmost row.
 	*row = -1;
 	for (int y = sy; y < sy + sh; y++)
@@ -425,7 +414,7 @@ static bool claim(const uint8_t *imgdat, int iw, int ih, int sx, int sy, int sw,
 	*col = -1;
 	for (int x = sx; x < sx + sw; x++)
 	{
-		const int ylim = (*row + PCG_TILE_PX < sh) ? (*row + PCG_TILE_PX) : sh;
+		const int ylim = (*row + PCG_TILE_PX) < (sy + sh) ? (*row + PCG_TILE_PX) : (sy + sh);
 		for (int y = *row; y < ylim; y++)
 		{
 			if (imgdat[x + (y * iw)] == 0) continue;
@@ -551,7 +540,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 
 		uint8_t pcg_data[32 * 4];  // Four 8x8 tiles, row interleaved.
 		const int limx = sx + sw;
-		const int limy = sx + sh;
+		const int limy = sy + sh;
 		clip_8x8_tile(imgdat, iw, clip_x, clip_y, limx, limy, &pcg_data[32 * 0]);
 		clip_8x8_tile(imgdat, iw, clip_x, clip_y + 8, limx, limy, &pcg_data[32 * 1]);
 		clip_8x8_tile(imgdat, iw, clip_x + 8, clip_y, limx, limy, &pcg_data[32 * 2]);
@@ -569,7 +558,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 		const int vx = ((clip_x % sw) - ox);
 		const int vy = ((clip_y % sh) - oy);
 		add_frm_dat(vx - last_vx, vy - last_vy, pt_idx, 0);
-//		render_region(imgdat, iw, ih, sx, sy, sw, sh);
+		render_region(imgdat, iw, ih, sx, sy, sw, sh);
 		last_vx = vx;
 		last_vy = vy;
 	}
@@ -593,7 +582,6 @@ int main(int argc, char **argv)
 	const int frame_w = strtoul(argv[2], NULL, 0);
 	const int frame_h = strtoul(argv[3], NULL, 0);
 	const char *outname = argv[4];
-	ConvMode mode = conv_mode_from_args(argc, argv);
 	const ConvOrigin origin = conv_origin_from_args(argc, argv);
 
 	// Prepare the PNG image.
@@ -608,17 +596,9 @@ int main(int argc, char **argv)
 		goto finished;
 	}
 
-	// Choose conversion mode if auto is specified.
-	// TODO: Gracefully handle < 16px frames.
-	if (mode == CONV_MODE_AUTO &&
-	    frame_h == PCG_TILE_PX && frame_w == PCG_TILE_PX)
-	{
-		mode = CONV_MODE_SP;
-	}
-	else
-	{
-		mode = CONV_MODE_XOBJ;
-	}
+	// Choose conversion based on sprite size.
+	const ConvMode mode = (frame_h <= PCG_TILE_PX && frame_w <= PCG_TILE_PX)
+	                       ? CONV_MODE_SP : CONV_MODE_XOBJ;
 
 	// Set up output handles.
 	if (!init_file_handles(mode, outname)) goto finished;
