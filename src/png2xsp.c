@@ -50,248 +50,9 @@
 
 #include "lodepng.h"
 
-#define PCG_TILE_PX 16
-
-typedef enum ConvOrigin
-{
-	CONV_ORIGIN_LEFT_TOP,
-	CONV_ORIGIN_CENTER_TOP,
-	CONV_ORIGIN_RIGHT_TOP,
-	CONV_ORIGIN_LEFT_CENTER,
-	CONV_ORIGIN_CENTER_CENTER,
-	CONV_ORIGIN_RIGHT_CENTER,
-	CONV_ORIGIN_LEFT_BOTTOM,
-	CONV_ORIGIN_CENTER_BOTTOM,
-	CONV_ORIGIN_RIGHT_BOTTOM,
-	CONV_ORIGIN_DEFAULT = CONV_ORIGIN_CENTER_CENTER
-} ConvOrigin;
-
-typedef enum ConvMode
-{
-	CONV_MODE_AUTO,
-	CONV_MODE_XOBJ,
-	CONV_MODE_SP,
-	CONV_MODE_DEFAULT = CONV_MODE_AUTO
-} ConvMode;
-
-//
-// Output files
-//
-
-// PCG output files and relevant indexing variables.
-static FILE *sf_pcg_out = NULL;  // XSP or SP PCG sprite data.
-static FILE *sf_frm_out = NULL;  // XSP_FRM_DAT data.
-static FILE *sf_ref_out = NULL;  // XPS_REF_DAT data.
-
-static uint8_t *s_pcg_dat;  // Allocated to the max sprite count.
-static int s_pcg_count = 0;
-static uint32_t s_frm_offs = 0;
-static int s_ref_count = 0;
-
-static bool init_file_handles(ConvMode mode, const char *outname)
-{
-	s_pcg_count = 0;
-	s_frm_offs = 0;
-	s_ref_count = 0;
-
-	char fname_buffer[256];
-
-	snprintf(fname_buffer, sizeof(fname_buffer), (mode == CONV_MODE_XOBJ) ? "%s.xsp" : "%s.sp", outname);
-	sf_pcg_out = fopen(fname_buffer, "wb");
-	if (!sf_pcg_out)
-	{
-		printf("Couldn't open %s for writing.\n", fname_buffer);
-		return false;
-	}
-
-	if (mode == CONV_MODE_XOBJ)
-	{
-		snprintf(fname_buffer, sizeof(fname_buffer), "%s.frm", outname);
-		sf_frm_out = fopen(fname_buffer, "wb");
-		if (!sf_frm_out)
-		{
-			printf("Couldn't open %s for writing.\n", fname_buffer);
-			fclose(sf_pcg_out);
-			return false;
-		}
-
-		snprintf(fname_buffer, sizeof(fname_buffer), "%s.ref", outname);
-		sf_ref_out = fopen(fname_buffer, "wb");
-		if (!sf_frm_out)
-		{
-			printf("Couldn't open %s for writing.\n", fname_buffer);
-			fclose(sf_pcg_out);
-			fclose(sf_frm_out);
-			return false;
-		}
-	}
-	return true;
-}
-
-// Motorola 68000, and therefore XSP, uses big-endian data.
-static void fwrite_uint16be(uint16_t val, FILE *f)
-{
-	uint8_t buf[2];
-	buf[0] = (val >> 8) & 0xFF;
-	buf[1] = val & 0xFF;
-	fwrite(buf, 1, sizeof(buf), f);
-	fflush(f);
-}
-
-static void fwrite_int16be(int16_t val, FILE *f)
-{
-	fputc((val >> 8) & 0xFF, f);
-	fputc(val & 0xFF, f);
-}
-
-static void fwrite_uint32be(uint32_t val, FILE *f)
-{
-	fwrite_uint16be((val >> 16) & 0xFFFF, f);
-	fwrite_uint16be(val & 0xFFFF, f);
-}
-
-//
-// Configuration and init sanity
-//
-
-static ConvOrigin conv_origin_from_args(int argc, char **argv)
-{
-	ConvOrigin ret = CONV_ORIGIN_DEFAULT;
-	if (argc < 6) return ret;
-	const char *argstr = argv[5];
-	if (strlen(argstr) < 2)
-	{
-		printf("Warning: Invalid origin '%s'; need two characters.\n", argstr);
-		return ret;
-	}
-
-	switch (argstr[0])
-	{
-		case 'l':
-		case 'L':
-			ret = CONV_ORIGIN_LEFT_TOP;
-			break;
-		case 'c':
-		case 'C':
-			ret = CONV_ORIGIN_CENTER_TOP;
-			break;
-		case 'r':
-		case 'R':
-			ret = CONV_ORIGIN_RIGHT_TOP;
-			break;
-		default:
-			printf("Warning: Unhandled X origin argument '%c'.\n", argstr[0]);
-			return ret;
-	}
-
-	switch (argstr[1])
-	{
-		case 't':
-		case 'T':
-			switch (ret)
-			{
-				case CONV_ORIGIN_LEFT_TOP:
-					ret = CONV_ORIGIN_LEFT_TOP;
-					break;
-				case CONV_ORIGIN_CENTER_TOP:
-					ret = CONV_ORIGIN_CENTER_TOP;
-					break;
-				case CONV_ORIGIN_RIGHT_TOP:
-					ret = CONV_ORIGIN_RIGHT_TOP;
-					break;
-				case CONV_ORIGIN_LEFT_CENTER:
-					ret = CONV_ORIGIN_LEFT_TOP;
-					break;
-				case CONV_ORIGIN_CENTER_CENTER:
-					ret = CONV_ORIGIN_CENTER_TOP;
-					break;
-				case CONV_ORIGIN_RIGHT_CENTER:
-					ret = CONV_ORIGIN_RIGHT_TOP;
-					break;
-				case CONV_ORIGIN_LEFT_BOTTOM:
-					ret = CONV_ORIGIN_LEFT_TOP;
-					break;
-				case CONV_ORIGIN_CENTER_BOTTOM:
-					ret = CONV_ORIGIN_CENTER_TOP;
-					break;
-				case CONV_ORIGIN_RIGHT_BOTTOM:
-					ret = CONV_ORIGIN_RIGHT_TOP;
-					break;
-			}
-			break;
-		case 'c':
-		case 'C':
-			switch (ret)
-			{
-				case CONV_ORIGIN_LEFT_TOP:
-					ret = CONV_ORIGIN_LEFT_CENTER;
-					break;
-				case CONV_ORIGIN_CENTER_TOP:
-					ret = CONV_ORIGIN_CENTER_CENTER;
-					break;
-				case CONV_ORIGIN_RIGHT_TOP:
-					ret = CONV_ORIGIN_RIGHT_CENTER;
-					break;
-				case CONV_ORIGIN_LEFT_CENTER:
-					ret = CONV_ORIGIN_LEFT_CENTER;
-					break;
-				case CONV_ORIGIN_CENTER_CENTER:
-					ret = CONV_ORIGIN_CENTER_CENTER;
-					break;
-				case CONV_ORIGIN_RIGHT_CENTER:
-					ret = CONV_ORIGIN_RIGHT_CENTER;
-					break;
-				case CONV_ORIGIN_LEFT_BOTTOM:
-					ret = CONV_ORIGIN_LEFT_CENTER;
-					break;
-				case CONV_ORIGIN_CENTER_BOTTOM:
-					ret = CONV_ORIGIN_CENTER_CENTER;
-					break;
-				case CONV_ORIGIN_RIGHT_BOTTOM:
-					ret = CONV_ORIGIN_RIGHT_CENTER;
-					break;
-			}
-			break;
-		case 'b':
-		case 'B':
-			switch (ret)
-			{
-				case CONV_ORIGIN_LEFT_TOP:
-					ret = CONV_ORIGIN_LEFT_BOTTOM;
-					break;
-				case CONV_ORIGIN_CENTER_TOP:
-					ret = CONV_ORIGIN_CENTER_BOTTOM;
-					break;
-				case CONV_ORIGIN_RIGHT_TOP:
-					ret = CONV_ORIGIN_RIGHT_BOTTOM;
-					break;
-				case CONV_ORIGIN_LEFT_CENTER:
-					ret = CONV_ORIGIN_LEFT_BOTTOM;
-					break;
-				case CONV_ORIGIN_CENTER_CENTER:
-					ret = CONV_ORIGIN_CENTER_BOTTOM;
-					break;
-				case CONV_ORIGIN_RIGHT_CENTER:
-					ret = CONV_ORIGIN_RIGHT_BOTTOM;
-					break;
-				case CONV_ORIGIN_LEFT_BOTTOM:
-					ret = CONV_ORIGIN_LEFT_BOTTOM;
-					break;
-				case CONV_ORIGIN_CENTER_BOTTOM:
-					ret = CONV_ORIGIN_CENTER_BOTTOM;
-					break;
-				case CONV_ORIGIN_RIGHT_BOTTOM:
-					ret = CONV_ORIGIN_RIGHT_BOTTOM;
-					break;
-			}
-			break;
-		default:
-			printf("Warning: Unhandled Y origin argument '%c'.\n", argstr[1]);
-			return ret;
-	}
-
-	return ret;
-}
+#include "types.h"
+#include "records.h"
+#include "util.h"
 
 static void show_usage(const char *prog_name)
 {
@@ -303,6 +64,7 @@ static void show_usage(const char *prog_name)
 	printf("         t/l: top/left\n");
 	printf("           c: center\n");
 	printf("         b/r: bottom/right\n");
+	printf("         e.g. \"lt\" uses the left-top as the origin.\n");
 	printf("\n");
 	printf("Example:\n");
 	printf("    %s player.png 32 48 out/player x cb\n", prog_name);
@@ -321,10 +83,10 @@ static bool check_arg_sanity(int argc, char **argv)
 
 	const int frame_w = strtoul(argv[2], NULL, 0);
 	const int frame_h = strtoul(argv[3], NULL, 0);
-	if (frame_w < PCG_TILE_PX || frame_h < PCG_TILE_PX)
+	if (frame_w < 0 || frame_h < 0)
 	{
-		printf("Frame sizes under 16 x 16 are not supported.\n");
-		return -1;
+		printf("Invalid frame size %d x %d\n", frame_w, frame_h);
+		return false;
 	}
 	return true;
 }
@@ -346,86 +108,51 @@ static uint8_t *load_png_data(const char *fname,
 	return ret;
 }
 
-//
-// Sprite chopping
-//
-
-// Commits a metasprite to the REF_DAT file.
-// sp_count: hardware sprites used in metasprite
-// frm_offs: offset within FRM_DAT file for this metasprite
-static void add_ref_dat(uint16_t sp_count, uint32_t frm_offs)
-{
-	fwrite_uint16be(sp_count, sf_ref_out);
-	fwrite_uint32be(frm_offs, sf_ref_out);
-	fwrite_uint16be(0x0000, sf_ref_out);  // Reserved / padding.
-	s_ref_count++;
-}
-
-static void add_frm_dat(int16_t vx, int16_t vy, uint16_t pt, uint16_t rv)
-{
-	fwrite_int16be(vx, sf_frm_out);
-	fwrite_int16be(vy, sf_frm_out);
-	fwrite_uint16be(pt, sf_frm_out);
-	fwrite_uint16be(rv, sf_frm_out);
-//	printf("frm: %04d %04d %04d %04d \t$%04X%04X%04X%04X\n", vx, vy, pt, rv, vx, vy, pt, rv);
-	s_frm_offs += 8;
-}
-
-// src points to a 128 byte chunk of PCG data
-static void add_pcg_dat(const uint8_t *src)
-{
-	memcpy(&s_pcg_dat[s_pcg_count * 128], src, 128);
-//	fwrite(src, 1, 128, sf_pcg_out);
-	s_pcg_count++;
-}
-
-// src points to a 128 byte chunk of PCG data
-// returns 0-65535 if PCG was found in PCG bank
-// otherwise returns -1
-// TODO: Consider storing hashes of the tiles alongside this and eliminating s_pcg_dat
-static int find_pcg_dat(const uint8_t *src)
-{
-	for (int i = 0; i < s_pcg_count; i++)
-	{
-		const uint8_t *candidate = &s_pcg_dat[i * 128];
-		if (memcmp(candidate, src, 128) == 0) return i;
-	}
-	return -1;
-}
-
-// Hunt top-down, then left-right, for the first viable sprite.
-// Returns false if no image data was found.
-static bool claim(const uint8_t *imgdat, int iw, int ih, int sx, int sy, int sw, int sh,
+// Hunt top-down, then left-right, for a sprite to clip from imgdat.
+// Returns false if imgdat is empty.
+static bool claim(const uint8_t *imgdat,
+                  int iw, int ih,
+                  int sx, int sy, int sw, int sh,
                   int *col, int *row)
 {
-//	printf("claiming from image of %dx%d: %d,%d size %dx%d\n", iw, ih, sx, sy, sw, sh);
-	// Find the topmost row.
+	// Walk down row by row looking for non-transparent pixel data.
 	*row = -1;
 	for (int y = sy; y < sy + sh; y++)
 	{
 		for (int x = sx; x < sx + sw; x++)
 		{
 			if (imgdat[x + (y * iw)] == 0) continue;
+			// Note the row image data was found on, and break out.
 			*row = y;
 			break;
 		}
+		// Break out if we are done searching.
 		if (*row >= 0) break;
 	}
-	if (*row < 0) return false;  // Image is empty.
+	if (*row < 0) return false;  // We never found a filled row, so it's empty.
 
+	// We have the top row, but we need to scan within a 16x16 block to find a
+	// viable sprite chunk to extract.
 	// Scan rightwards to find the left edge of the sprite.
 	*col = -1;
 	for (int x = sx; x < sx + sw; x++)
 	{
+		// As our test column extends 16px below the starting line, we have to
+		// ensure we don't exceed the boundaries of the sprite clipping region
+		// or the source image data.
 		const int ylim = (*row + PCG_TILE_PX) < (sy + sh) ? (*row + PCG_TILE_PX) : (sy + sh);
 		for (int y = *row; y < ylim; y++)
 		{
 			if (imgdat[x + (y * iw)] == 0) continue;
+			// Found it; break out.
 			*col = x;
 			break;
 		}
+		// If the column is set, we are done.
 		if (*col >= 0) break;
 	}
+	// Sanity check that something hasn't gone wrong.
+	// TODO: Remove?
 	if (*col < 0)
 	{
 		printf("Unexpectedly empty strip from row %d?\n", *row);
@@ -433,72 +160,6 @@ static bool claim(const uint8_t *imgdat, int iw, int ih, int sx, int sy, int sw,
 	}
 
 	return true;
-}
-
-// Takes the 8x8 tile from imgdat and places it in the appropriate 4bpp format
-// into out. The data is erased from imgdat as it is taken.
-// It is a given that imgdat is large enough for the indicated region.
-// Data exceeding sw and sh is excluded.
-static void clip_8x8_tile(uint8_t *imgdat, int iw, int sx, int sy, int limx, int limy, uint8_t *out)
-{
-	for (int y = 0; y < 8; y++)
-	{
-		uint8_t *line = &imgdat[sx + ((sy + y) * iw)];
-		const int source_y = sy + y;
-		for (int x = 0; x < 8; x += 2)
-		{
-			const int source_x = sx + x;
-			uint8_t px[2] = {0, 0};
-			if (source_y < limy)
-			{
-				if (source_x < limx)
-				{
-					px[0] = (line[x] & 0xF);
-					line[x] = 0;
-				}
-				if (source_x + 1 < limx)
-				{
-					px[1] = (line[x + 1] & 0xF);
-					line[x + 1] = 0;
-				}
-			}
-			*out++ = (px[0] << 4) | px[1];
-		}
-	}
-}
-
-static void origin_for_sp(ConvOrigin origin, int sw, int sh, int *ox, int *oy)
-{
-	switch (origin)
-	{
-		case CONV_ORIGIN_LEFT_TOP:      *oy = 0;      *ox = 0;      break;
-		case CONV_ORIGIN_CENTER_TOP:    *oy = 0;      *ox = sw / 2; break;
-		case CONV_ORIGIN_RIGHT_TOP:     *oy = 0;      *ox = sw - 1; break;
-		case CONV_ORIGIN_LEFT_CENTER:   *oy = sh / 2; *ox = 0;      break;
-		case CONV_ORIGIN_CENTER_CENTER: *oy = sh / 2; *ox = sw / 2; break;
-		case CONV_ORIGIN_RIGHT_CENTER:  *oy = sh / 2; *ox = sw - 1; break;
-		case CONV_ORIGIN_LEFT_BOTTOM:   *oy = sh - 1; *ox = 0;      break;
-		case CONV_ORIGIN_CENTER_BOTTOM: *oy = sh - 1; *ox = sw / 2; break;
-		case CONV_ORIGIN_RIGHT_BOTTOM:  *oy = sh - 1; *ox = sw - 1; break;
-	}
-}
-
-static void render_region(uint8_t *imgdat, int iw, int ih, int sx, int sy, int sw, int sh)
-{
-	for (int x = sx; x < sx + sw; x++) printf("--");
-	printf("\n");
-	for (int y = sy; y < sy + sh; y++)
-	{
-		for (int x = sx; x < sx + sw; x++)
-		{
-			static const char hex[0x10] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-			const uint8_t px = imgdat[x + (y * iw)];
-			printf("%c ", px ? hex[px] : ((x % 8) == 0 || (y % 8) == 0) ? '.' : ' ');
-		}
-		printf("|\n");
-	}
-	for (int x = sx; x < sx + sw; x++) printf("--");
-	printf("\n");
 }
 
 // Takes sprite data from imgdat and generates XSP entry data for it.
@@ -511,7 +172,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	// sprite. s_frm_offs will be added for every hardware sprite chopped
 	// out from the metasprite data.
 	uint16_t sp_count = 0;  // SP count in REF dat
-	const uint32_t frm_offs = s_frm_offs;
+	const uint32_t frm_offs = record_get_frm_offs();
 
 	int ox, oy;
 	origin_for_sp(origin, sw, sh, &ox, &oy);
@@ -523,16 +184,18 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	//      a) store position in PCG data / 128 to get pattern index
 	//      b) record X/Y mirroring if used to place the sprite.
 	//    If we don't have it,
-	//      a) store s_pcg_count as the pattern index
-	//      b) call add_pcg_dat for the sprite data.
+	//      a) store PCG count as the pattern index
+	//      b) call record_pcg_dat for the sprite data.
 	// 1.5) If in SP mode, skip to step 4.
 	// 2) Set vx and vy for PCG sprite's position relative to sprite origin.
 	//    Mind that hardware sprites use 0,0 for their top-left.
-	// 3) Call add_frm_dat with data from above.
+	// 3) Call record_frm_dat with data from above.
 	// 4) Erase the 16x16 image data from imgdat (set it to zero)
-	// 5) Increment s_frm_offs.
+	// 5) Increment FRM.
 
-//	render_region(imgdat, iw, ih, sx, sy, sw, sh);
+	// DEBUG
+	// TODO: Verbose #define
+//		render_region(imgdat, iw, ih, sx, sy, sw, sh);
 
 	int clip_x, clip_y;
 	int last_vx = 0;
@@ -540,41 +203,38 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	while (claim(imgdat, iw, ih, sx, sy, sw, sh, &clip_x, &clip_y))
 	{
 		sp_count++;
-
 		uint8_t pcg_data[32 * 4];  // Four 8x8 tiles, row interleaved.
 		const int limx = sx + sw;
 		const int limy = sy + sh;
-		clip_8x8_tile(imgdat, iw, clip_x, clip_y, limx, limy, &pcg_data[32 * 0]);
-		clip_8x8_tile(imgdat, iw, clip_x, clip_y + 8, limx, limy, &pcg_data[32 * 1]);
-		clip_8x8_tile(imgdat, iw, clip_x + 8, clip_y, limx, limy, &pcg_data[32 * 2]);
-		clip_8x8_tile(imgdat, iw, clip_x + 8, clip_y + 8, limx, limy, &pcg_data[32 * 3]);
+		clip_8x8_tile(imgdat, iw, clip_x, clip_y,
+		              limx, limy, &pcg_data[32 * 0]);
+		clip_8x8_tile(imgdat, iw, clip_x, clip_y + 8,
+		              limx, limy, &pcg_data[32 * 1]);
+		clip_8x8_tile(imgdat, iw, clip_x + 8, clip_y,
+		              limx, limy, &pcg_data[32 * 2]);
+		clip_8x8_tile(imgdat, iw, clip_x + 8, clip_y + 8,
+		              limx, limy, &pcg_data[32 * 3]);
 
-		int pt_idx = find_pcg_dat(pcg_data);
+		int pt_idx = record_find_pcg_dat(pcg_data);
 		if (pt_idx < 0)
 		{
-			pt_idx = s_pcg_count;
-			add_pcg_dat(pcg_data);
+			pt_idx = record_get_pcg_count();
+			record_pcg_dat(pcg_data);
 		}
 
 		if (mode != CONV_MODE_XOBJ) continue;
 
 		const int vx = ((clip_x % sw) - ox);
 		const int vy = ((clip_y % sh) - oy);
-		add_frm_dat(vx - last_vx, vy - last_vy, pt_idx, 0);
-//		render_region(imgdat, iw, ih, sx, sy, sw, sh);
+		record_frm_dat(vx - last_vx, vy - last_vy, pt_idx, 0);
+
 		last_vx = vx;
 		last_vy = vy;
 	}
 
-//	printf("Used %d sprites\n", sp_count);
-
 	if (mode != CONV_MODE_XOBJ) return;
-	add_ref_dat(sp_count, frm_offs);
+	record_ref_dat(sp_count, frm_offs);
 }
-
-//
-// Entry point
-//
 
 int main(int argc, char **argv)
 {
@@ -604,39 +264,32 @@ int main(int argc, char **argv)
 	                       ? CONV_MODE_SP : CONV_MODE_XOBJ;
 
 	// Set up output handles.
-	if (!init_file_handles(mode, outname)) goto finished;
+	if (!record_init(mode, outname)) goto finished;
 
 	// Chop sprites out of the image data.
-
-	s_pcg_dat = malloc(128 * 65536);  // Max 65536 PCG sprites.
-
 	const int sprite_rows = png_h / frame_h;
 	const int sprite_columns = png_w / frame_w;
-	printf("%d x %d cells --> %d metasprites\n", sprite_columns, sprite_rows, sprite_columns * sprite_rows);
 	for (int y = 0; y < sprite_rows; y++)
 	{
 		for (int x = 0; x < sprite_columns; x++)
 		{
-//			printf("FRM %d\n", x + y * sprite_columns + 1);
-			chop_sprite(imgdat, png_w, png_h, mode, origin, x * frame_w, y * frame_h, frame_w, frame_h);
+			chop_sprite(imgdat, png_w, png_h, mode, origin,
+			            x * frame_w, y * frame_h, frame_w, frame_h);
 		}
 	}
 
 	if (mode == CONV_MODE_SP)
 	{
-		printf("Used %d PCG tiles.\n", s_pcg_count);
+		printf("%d SP.\n", record_get_pcg_count());
 	}
 	else
 	{
-		printf("Used %d PCG tiles for %d refs, for %d sprites.\n", s_pcg_count, s_frm_offs / 8, s_ref_count);
+		printf("%d XSP.\n", record_get_pcg_count());
+		printf("%d FRM.\n", record_get_frm_offs() / 8);
+		printf("%d REF.\n", record_get_ref_count());
 	}
 
-	fwrite(s_pcg_dat, 128, s_pcg_count, sf_pcg_out);
-	fclose(sf_pcg_out);
-	if (sf_frm_out) fclose(sf_frm_out);
-	if (sf_ref_out) fclose(sf_ref_out);
-
-	free(s_pcg_dat);
+	record_complete();
 
 finished:
 	free(imgdat);

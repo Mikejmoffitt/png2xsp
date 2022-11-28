@@ -19,7 +19,7 @@ OBJECTS_C := $(addprefix $(OBJECTS_C_DIR)/, $(SOURCES_C:.c=.o))
 
 EXECNAME := $(APPNAME)$(APPEXT)
 
-.PHONY: clean
+.PHONY: all clean
 
 all: $(EXECNAME)
 
