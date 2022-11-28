@@ -200,6 +200,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	int clip_x, clip_y;
 	int last_vx = 0;
 	int last_vy = 0;
+	// TODO: In SP mode, should we just process the entire image?
 	while (claim(imgdat, iw, ih, sx, sy, sw, sh, &clip_x, &clip_y))
 	{
 		sp_count++;
@@ -215,7 +216,10 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 		clip_8x8_tile(imgdat, iw, clip_x + 8, clip_y + 8,
 		              limx, limy, &pcg_data[32 * 3]);
 
-		int pt_idx = record_find_pcg_dat(pcg_data);
+		// In XOBJ mode, duplicate tiles are removed.
+		int pt_idx = (mode == CONV_MODE_XOBJ)
+		             ? record_find_pcg_dat(pcg_data)
+		             : -1;
 		if (pt_idx < 0)
 		{
 			pt_idx = record_get_pcg_count();
@@ -259,9 +263,8 @@ int main(int argc, char **argv)
 		goto finished;
 	}
 
-	// Choose conversion based on sprite size.
-	const ConvMode mode = (frame_h <= PCG_TILE_PX && frame_w <= PCG_TILE_PX)
-	                       ? CONV_MODE_SP : CONV_MODE_XOBJ;
+	// TODO: Make an option for mode?
+	const ConvMode mode = CONV_MODE_XOBJ;
 
 	// Set up output handles.
 	if (!record_init(mode, outname)) goto finished;
