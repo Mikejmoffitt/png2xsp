@@ -68,7 +68,7 @@ bool record_init(ConvMode mode, const char *outname)
 		}
 	}
 
-	s_pcg_dat = malloc(128 * 65536);  // Max 65536 PCG sprites.
+	s_pcg_dat = malloc(128 * PCG_PT_MAX_COUNT);
 	if (!s_pcg_dat)
 	{
 		printf("Couldn't allocate PCG data buffer.\n");
@@ -124,11 +124,11 @@ void record_ref_dat(uint16_t sp_count, uint32_t frm_offs)
 	s_ref_count++;
 }
 
-void record_frm_dat(int16_t vx, int16_t vy, uint16_t pt, uint16_t rv)
+void record_frm_dat(int16_t vx, int16_t vy, int16_t pt, uint16_t rv)
 {
 	fwrite_int16be(vx, sf_frm_out);
 	fwrite_int16be(vy, sf_frm_out);
-	fwrite_uint16be(pt, sf_frm_out);
+	fwrite_int16be(pt, sf_frm_out);
 	fwrite_uint16be(rv, sf_frm_out);
 //	printf("frm: %04d %04d %04d %04d \t$%04X%04X%04X%04X\n", vx, vy, pt, rv, vx, vy, pt, rv);
 	s_frm_offs += 8;

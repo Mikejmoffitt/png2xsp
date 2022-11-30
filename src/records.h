@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include "types.h"
 
+#define PCG_PT_MAX_COUNT 32768
+
 // Prepares file handles/buffers for the files indicated by outname.
 // Based on mode, the following file handles will be opened:
 // <outname>.xsp or <outname>.sp
@@ -21,7 +23,7 @@ void record_complete(void);
 void record_ref_dat(uint16_t sp_count, uint32_t frm_offs);
 
 // Records an FRM entry.
-void record_frm_dat(int16_t vx, int16_t vy, uint16_t pt, uint16_t rv);
+void record_frm_dat(int16_t vx, int16_t vy, int16_t pt, uint16_t rv);
 
 // Records a PCG entry.
 // src points to a 128 byte chunk of PCG tile data.

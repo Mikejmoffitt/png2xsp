@@ -223,7 +223,15 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 		if (pt_idx < 0)
 		{
 			pt_idx = record_get_pcg_count();
-			record_pcg_dat(pcg_data);
+			if (pt_idx >= PCG_PT_MAX_COUNT)
+			{
+				printf("PCG area is full! cannot record any more tiles.\n");
+				return;
+			}
+			else
+			{
+				record_pcg_dat(pcg_data);
+			}
 		}
 
 		if (mode != CONV_MODE_XOBJ) continue;
