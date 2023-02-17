@@ -38,7 +38,7 @@ bool record_init(ConvMode mode, const char *outname)
 
 	char fname_buffer[256];
 
-	snprintf(fname_buffer, sizeof(fname_buffer), (mode == CONV_MODE_XOBJ) ? "%s.xsp" : "%s.sp", outname);
+	snprintf(fname_buffer, sizeof(fname_buffer), (mode == CONV_MODE_XOBJ) ? "%s.XSP" : "%s.SP", outname);
 	sf_pcg_out = fopen(fname_buffer, "wb");
 	if (!sf_pcg_out)
 	{
@@ -48,7 +48,7 @@ bool record_init(ConvMode mode, const char *outname)
 
 	if (mode == CONV_MODE_XOBJ)
 	{
-		snprintf(fname_buffer, sizeof(fname_buffer), "%s.frm", outname);
+		snprintf(fname_buffer, sizeof(fname_buffer), "%s.FRM", outname);
 		sf_frm_out = fopen(fname_buffer, "wb");
 		if (!sf_frm_out)
 		{
@@ -57,7 +57,7 @@ bool record_init(ConvMode mode, const char *outname)
 			return false;
 		}
 
-		snprintf(fname_buffer, sizeof(fname_buffer), "%s.ref", outname);
+		snprintf(fname_buffer, sizeof(fname_buffer), "%s.REF", outname);
 		sf_ref_out = fopen(fname_buffer, "wb");
 		if (!sf_frm_out)
 		{

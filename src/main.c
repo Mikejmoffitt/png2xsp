@@ -66,11 +66,17 @@ static void show_usage(const char *prog_name)
 	printf("         b/r: bottom/right\n");
 	printf("         e.g. \"lt\" uses the left-top as the origin.\n");
 	printf("\n");
-	printf("Example:\n");
-	printf("    %s player.png 32 48 out/player x cb\n", prog_name);
+	printf("As an example, for the following command\n\n");
+	printf("    %s player.png 32 48 out/PLAYER x cb\n", prog_name);
 	printf("\n");
-	printf("The result is player.png being chopped into a series of 32x48\n");
-	printf("XOBJ sprites with the origin at the center-bottom of the frame.\n");
+	printf("'player.png' is loaded, and these files will be emitted:\n\n");
+	printf("    out/PLAYER.XSP  <-- Graphical texture data\n");
+	printf("    out/PLAYER.FRM  <-- Frame composition data\n");
+	printf("    out/PLAYER.REF  <-- Frame refrence data\n");
+	printf("    out/PLAYER.PAL  <-- Palette data (in X68000 color RAM format)\n");
+	printf("\n");
+	printf("'player.png' is chopped into a series of 32 x 48 XOBJ sprites,\n");
+	printf("with the center-bottom of the frame as the origin point (0, 0).\n");
 }
 
 static bool check_arg_sanity(int argc, char **argv)
@@ -93,11 +99,26 @@ static bool check_arg_sanity(int argc, char **argv)
 
 // Free after usage. NULL on error.
 static uint8_t *load_png_data(const char *fname,
-                              unsigned int *png_w, unsigned int *png_h)
+                              unsigned int *png_w, unsigned int *png_h,
+                              LodePNGState *state)
 {
+	uint8_t *png;
 	uint8_t *ret;
-	const unsigned int error = lodepng_decode_file(&ret, png_w, png_h,
-	                                               fname, LCT_PALETTE, 8);
+	// First load the file into memory.
+	size_t fsize;
+	int error = lodepng_load_file(&png, &fsize, fname);
+	if (error)
+	{
+		printf("LodePNG error %u: %s\n", error, lodepng_error_text(error));
+		return NULL;
+	}
+
+	// The image is decoded as an 8-bit indexed color PNG; we don't want any
+	// conversion to take place.
+	lodepng_state_init(state);
+	state->info_raw.colortype = LCT_PALETTE;
+	state->info_raw.bitdepth = 8;
+	error = lodepng_decode(&ret, png_w, png_h, state, png, fsize);
 	if (error)
 	{
 		printf("LodePNG error %u: %s\n", error, lodepng_error_text(error));
@@ -195,7 +216,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 
 	// DEBUG
 	// TODO: Verbose #define
-//		render_region(imgdat, iw, ih, sx, sy, sw, sh);
+//	render_region(imgdat, iw, ih, sx, sy, sw, sh);
 
 	int clip_x, clip_y;
 	int last_vx = 0;
@@ -225,7 +246,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 			pt_idx = record_get_pcg_count();
 			if (pt_idx >= PCG_PT_MAX_COUNT)
 			{
-				printf("PCG area is full! cannot record any more tiles.\n");
+				printf("PCG area is full! Cannot record any more tiles.\n");
 				return;
 			}
 			else
@@ -248,6 +269,44 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	record_ref_dat(sp_count, frm_offs);
 }
 
+static void write_palette(const LodePNGState *state, const char *outname)
+{
+	char buff[256];
+	snprintf(buff, sizeof(buff), "%s.PAL", outname);
+	FILE *f = fopen(buff, "wb");
+	if (!f)
+	{
+		printf("Couldn't open \"%s\" for writing.\n", buff);
+		return;
+	}
+
+	// First color is written as transparent.
+	char fbuf[2];
+	fbuf[0] = 0;
+	fbuf[1] = 0;
+	fwrite(fbuf, 1, sizeof(fbuf), f);
+	// We don't want the first palette index as it is always transparent.
+	for (int i = 1; i < 16; i++)
+	{
+		// LodePNG palette data is sets of four bytes in RGBA order.
+		const int offs = i * 4;
+		const uint8_t r = state->info_png.color.palette[offs + 0];
+		const uint8_t g = state->info_png.color.palette[offs + 1];
+		const uint8_t b = state->info_png.color.palette[offs + 2];
+		
+		// Conversion to X68000 RGB555.
+		const uint16_t entry = (((r >> 3) & 0x1F) << 6) |
+		                       (((g >> 3) & 0x1F) << 11) |
+		                       (((b >> 3) & 0x1F) << 1);
+		// Data should be stored as big endian 16-bit values.
+		fbuf[0] = entry >> 8;
+		fbuf[1] = entry & 0xFF;
+
+		fwrite(fbuf, 1, sizeof(fbuf), f);
+	}
+	fclose(f);
+}
+
 int main(int argc, char **argv)
 {
 	if (!check_arg_sanity(argc, argv)) return 0;
@@ -262,7 +321,8 @@ int main(int argc, char **argv)
 	// Prepare the PNG image.
 	unsigned int png_w = 0;
 	unsigned int png_h = 0;
-	uint8_t *imgdat = load_png_data(fname, &png_w, &png_h);
+	LodePNGState state;
+	uint8_t *imgdat = load_png_data(fname, &png_w, &png_h, &state);
 	if (!imgdat) return -1;
 	if (frame_w > png_w || frame_h > png_h)
 	{
@@ -301,6 +361,9 @@ int main(int argc, char **argv)
 	}
 
 	record_complete();
+
+	// Extract the palette.
+	write_palette(&state, outname);
 
 finished:
 	free(imgdat);
