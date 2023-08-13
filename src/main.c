@@ -197,6 +197,8 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 
 	int ox, oy;
 	origin_for_sp(origin, sw, sh, &ox, &oy);
+	ox -= 8;
+	oy -= 8;
 
 	// If the sprite area from imgdat isn't empty:
 	// 1) Search existing PCG data, see if we have the image data already.
