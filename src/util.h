@@ -13,9 +13,6 @@
 // sx, sy: top-left origin point of sprite frame being extracted from imgdat.
 // ox, oy: origin point considered the "center" of the extracted sprite.
 
-// Sets ox and oy based on the origin mode and sprite frame size.
-void origin_for_sp(ConvOrigin origin, int sw, int sh, int *ox, int *oy);
-
 // (debug) Renders a region of imgdat as terminal output.
 void render_region(const uint8_t *imgdat, int iw, int ih,
                    int sx, int sy, int sw, int sh);

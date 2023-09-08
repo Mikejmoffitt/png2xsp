@@ -3,22 +3,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-void origin_for_sp(ConvOrigin origin, int sw, int sh, int *ox, int *oy)
-{
-	switch (origin)
-	{
-		case CONV_ORIGIN_LEFT_TOP:      *oy = 0;      *ox = 0;      break;
-		case CONV_ORIGIN_CENTER_TOP:    *oy = 0;      *ox = sw / 2; break;
-		case CONV_ORIGIN_RIGHT_TOP:     *oy = 0;      *ox = sw - 1; break;
-		case CONV_ORIGIN_LEFT_CENTER:   *oy = sh / 2; *ox = 0;      break;
-		case CONV_ORIGIN_CENTER_CENTER: *oy = sh / 2; *ox = sw / 2; break;
-		case CONV_ORIGIN_RIGHT_CENTER:  *oy = sh / 2; *ox = sw - 1; break;
-		case CONV_ORIGIN_LEFT_BOTTOM:   *oy = sh - 1; *ox = 0;      break;
-		case CONV_ORIGIN_CENTER_BOTTOM: *oy = sh - 1; *ox = sw / 2; break;
-		case CONV_ORIGIN_RIGHT_BOTTOM:  *oy = sh - 1; *ox = sw - 1; break;
-	}
-}
-
 void render_region(const uint8_t *imgdat, int iw, int ih,
                    int sx, int sy, int sw, int sh)
 {

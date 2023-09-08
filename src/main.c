@@ -47,6 +47,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "lodepng.h"
 
@@ -56,45 +57,45 @@
 
 static void show_usage(const char *prog_name)
 {
-	printf("Usage: %s sprites.png w h outname <o>\n", prog_name);
-	printf("      w: Width of sprite within spritesheet (decimal or hex)\n");
-	printf("      h: Height of sprite within spritesheet (decimal or hex)\n");
-	printf("outname: Base file path and name for output.\n");
-	printf("      o: Origin (XY, where both characters form an argument\n");
-	printf("         t/l: top/left\n");
-	printf("           c: center\n");
-	printf("         b/r: bottom/right\n");
-	printf("         e.g. \"lt\" uses the left-top as the origin.\n");
+	printf("Usage: %s input.png <-o output> <-w width> <-h height> [-x xorigin] [-y yorigin] [-b]\n", prog_name);
+	printf("-o: Output file path (base)\n");
+	printf("    Specifies the base filepath for newly created file(s).\n");
+	printf("    For classic XOBJ use, multiple files are created with the\n");
+	printf("    extensions XSP/SP, FRM, REF, and PAL.\n");
+	printf("    When creating a bundle (see -b), the path is used directly.\n");
 	printf("\n");
-	printf("As an example, for the following command\n\n");
-	printf("    %s player.png 32 48 out/PLAYER x cb\n", prog_name);
+	printf("-w, -h: Frame dimensions (pixels).\n");
+	printf("    Size of one frame within the spritesheet. Must be >= 1.\n");
+	printf("    If both parameters are <= 16, SP data is emitted, and\n");
+	printf("    REF/FRM data is not necessary.\n");
 	printf("\n");
-	printf("'player.png' is loaded, and these files will be emitted:\n\n");
+	printf("-x, -y: Frame origin (pixels; center default\n");
+	printf("    Specifies the location within the frame to be treated as\n");
+	printf("    the center of the sprite. If no argument is specified, the\n");
+	printf("    center of a frame is used (frame size / 2).\n");
+	printf("    It is also possible to specify edges of the frame using\n");
+	printf("    the terms \"top\", \"bottom\", \"left\", and \"right\".\n");
+	printf("\n");
+	printf("-b: Bundle\n");
+	printf("    If bundle is set, then instead of generating a number of\n");
+	printf("    files, only a single \"XSB\" bundle is emitted. This is a\n");
+	printf("    binary blob with a small header containing metadata and\n");
+	printf("    offsets to REF, FRM, and XSP within. This allows for one\n");
+	printf("    object set to be loaded from a single file.\n");
+	printf("\n");
+	printf("Sample usage:\n");
+	printf("    %s player.png -w 32 -h 48 -y 40 -o out/PLAYER\n", prog_name);
+	printf("\n");
+	printf("\"player.png\" is loaded, and these files will be emitted:\n\n");
 	printf("    out/PLAYER.XSP  <-- Graphical texture data\n");
 	printf("    out/PLAYER.FRM  <-- Frame composition data\n");
 	printf("    out/PLAYER.REF  <-- Frame refrence data\n");
-	printf("    out/PLAYER.PAL  <-- Palette data (in X68000 color RAM format)\n");
+	printf("    out/PLAYER.PAL  <-- Palette data (in X68000 color format)\n");
 	printf("\n");
-	printf("'player.png' is chopped into a series of 32 x 48 XOBJ sprites,\n");
-	printf("with the center-bottom of the frame as the origin point (0, 0).\n");
-}
-
-static bool check_arg_sanity(int argc, char **argv)
-{
-	if (argc < 5)
-	{
-		show_usage(argv[0]);
-		return false;
-	}
-
-	const int frame_w = strtoul(argv[2], NULL, 0);
-	const int frame_h = strtoul(argv[3], NULL, 0);
-	if (frame_w < 0 || frame_h < 0)
-	{
-		printf("Invalid frame size %d x %d\n", frame_w, frame_h);
-		return false;
-	}
-	return true;
+	printf("In a similar example, a bundle is generated:\n");
+	printf("    %s player.png -w 32 -h 48 -y 40 -b -o out/PLAYER\n",
+	       prog_name);
+	printf("    out/PLAYER.XSB  <-- Everything\n");
 }
 
 // Free after usage. NULL on error.
@@ -125,7 +126,7 @@ static uint8_t *load_png_data(const char *fname,
 		return NULL;
 	}
 
-	printf("Loaded \"%s\": %d x %d\n", fname, *png_w, *png_h);
+//	printf("Loaded \"%s\": %d x %d\n", fname, *png_w, *png_h);
 	return ret;
 }
 
@@ -185,7 +186,8 @@ static bool claim(const uint8_t *imgdat,
 
 // Takes sprite data from imgdat and generates XSP entry data for it.
 // Adds to the PCG, FRM, and REF files as necessary.
-static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrigin origin,
+static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode,
+                        int ox, int oy,
                         int sx, int sy, int sw, int sh)
 {
 	// Data that gets placed into the ref dat at the end.
@@ -195,10 +197,8 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	uint16_t sp_count = 0;  // SP count in REF dat
 	const uint32_t frm_offs = record_get_frm_offs();
 
-	int ox, oy;
-	origin_for_sp(origin, sw, sh, &ox, &oy);
-	ox -= 8;
-	oy -= 8;
+	ox -= PCG_TILE_PX / 2;
+	oy -= PCG_TILE_PX / 2;
 
 	// If the sprite area from imgdat isn't empty:
 	// 1) Search existing PCG data, see if we have the image data already.
@@ -218,7 +218,7 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 
 	// DEBUG
 	// TODO: Verbose #define
-//	render_region(imgdat, iw, ih, sx, sy, sw, sh);
+	// render_region(imgdat, iw, ih, sx, sy, sw, sh);
 
 	int clip_x, clip_y;
 	int last_vx = 0;
@@ -271,56 +271,121 @@ static void chop_sprite(uint8_t *imgdat, int iw, int ih, ConvMode mode, ConvOrig
 	record_ref_dat(sp_count, frm_offs);
 }
 
-static void write_palette(const LodePNGState *state, const char *outname)
-{
-	char buff[256];
-	snprintf(buff, sizeof(buff), "%s.PAL", outname);
-	FILE *f = fopen(buff, "wb");
-	if (!f)
-	{
-		printf("Couldn't open \"%s\" for writing.\n", buff);
-		return;
-	}
-
-	// First color is written as transparent.
-	char fbuf[2];
-	fbuf[0] = 0;
-	fbuf[1] = 0;
-	fwrite(fbuf, 1, sizeof(fbuf), f);
-	// We don't want the first palette index as it is always transparent.
-	for (int i = 1; i < 16; i++)
-	{
-		// LodePNG palette data is sets of four bytes in RGBA order.
-		const int offs = i * 4;
-		const uint8_t r = state->info_png.color.palette[offs + 0];
-		const uint8_t g = state->info_png.color.palette[offs + 1];
-		const uint8_t b = state->info_png.color.palette[offs + 2];
-		
-		// Conversion to X68000 RGB555.
-		const uint16_t entry = (((r >> 3) & 0x1F) << 6) |
-		                       (((g >> 3) & 0x1F) << 11) |
-		                       (((b >> 3) & 0x1F) << 1);
-		// Data should be stored as big endian 16-bit values.
-		fbuf[0] = entry >> 8;
-		fbuf[1] = entry & 0xFF;
-
-		fwrite(fbuf, 1, sizeof(fbuf), f);
-	}
-	fclose(f);
-}
-
 int main(int argc, char **argv)
 {
-	if (!check_arg_sanity(argc, argv)) return 0;
-	
-	// User parameters.
-	const char *fname = argv[1];
-	const int frame_w = strtoul(argv[2], NULL, 0);
-	const int frame_h = strtoul(argv[3], NULL, 0);
-	const char *outname = argv[4];
-	const ConvOrigin origin = conv_origin_from_args(argc, argv);
+	const char *progname = argv[0];
+	if (argc == 1)
+	{
+		show_usage(progname);
+		return 0;
+	}
+	//
+	// Parse user parameters.
+	//
+	const char *fname = NULL;
+	const char *outname = NULL;
+	int frame_w = -1;
+	int frame_h = -1;
+	int origin_x = -1;
+	int origin_y = -1;
+	bool bundle = false;
 
+	// Parse options.
+	int c;
+	while ((c = getopt(argc, argv, "?o:w:h:x:y:b")) != -1)
+	{
+		switch (c)
+		{
+			case '?':
+				show_usage(progname);
+				return 0;
+			case 'o':
+				outname = optarg;
+				break;
+			case 'w':
+				frame_w = strtoul(optarg, NULL, 0);
+				break;
+			case 'h':
+				frame_h = strtoul(optarg, NULL, 0);
+				break;
+			case 'x':
+				if (strcmp("left", optarg) == 0) origin_x = 0;  // min
+				else if (strcmp("right", optarg) == 0) origin_x = 65535;  // max
+				else origin_x = strtoul(optarg, NULL, 0);
+				break;
+			case 'y':
+				if (strcmp("top", optarg) == 0) origin_y = 0;  // min
+				else if (strcmp("bottom", optarg) == 0) origin_y = 65535;  // max
+				else origin_y = strtoul(optarg, NULL, 0);
+				break;
+			case 'b':
+				bundle = true;
+				break;
+		}
+	}
+
+	// Non-opt arguments
+	for (int i = optind; i < argc; i++)
+	{
+		fname = argv[i];
+		break;
+	}
+
+	//
+	// Check argument sanity
+	//
+
+	if (frame_w <= 0 || frame_h <= 0)
+	{
+		printf("Frame width and height parameters must be >= 0 (have %d x %d)\n",
+		       frame_w, frame_h);
+		return -1;
+	}
+	if (!outname)
+	{
+		printf("Output file name must be specified.\n");
+		return -1;
+	}
+
+	if (!fname)
+	{
+		printf("Input file name must be specified.\n");
+		return -1;
+	}
+
+	// Default to center origin.
+	if (origin_x < 0) origin_x = frame_w / 2;
+	if (origin_y < 0) origin_y = frame_h / 2;
+	if (origin_x > frame_w) origin_x = frame_w;
+	if (origin_y > frame_w) origin_y = frame_h;
+
+	const ConvMode mode = (frame_w <= PCG_TILE_PX && frame_h <= PCG_TILE_PX) ?
+	                      CONV_MODE_SP : CONV_MODE_XOBJ;
+
+	const char *modestr = (mode == CONV_MODE_XOBJ) ? "XSP" : "SP";
+	printf("Options summary:\n");
+	printf("Input: %s\n", fname);
+	printf("Frame: %d x %d\n", frame_w, frame_h);
+	printf("Origin: %d, %d\n", origin_x, origin_y);
+	printf("Mode: %s\n", modestr);
+	printf("Bundle: %s\n", bundle ? "Yes" : "No");
+	printf("Output: \"%s\"\n", outname);
+	if (bundle)
+	{
+		printf("--> %s.XSB\n", outname);
+	}
+	else
+	{
+		printf("--> %s.%s\n", outname, modestr);
+		printf("--> %s.FRM\n", outname);
+		printf("--> %s.REF\n", outname);
+		printf("--> %s.PAL\n", outname);
+	}
+
+	//
 	// Prepare the PNG image.
+	//
+
 	unsigned int png_w = 0;
 	unsigned int png_h = 0;
 	LodePNGState state;
@@ -333,11 +398,11 @@ int main(int argc, char **argv)
 		goto finished;
 	}
 
-	// TODO: Make an option for mode?
-	const ConvMode mode = CONV_MODE_XOBJ;
 
-	// Set up output handles.
-	if (!record_init(mode, outname)) goto finished;
+	//
+	// Generate XSP data.
+	//
+	if (!record_init(outname, mode, bundle)) goto finished;
 
 	// Chop sprites out of the image data.
 	const int sprite_rows = png_h / frame_h;
@@ -346,26 +411,47 @@ int main(int argc, char **argv)
 	{
 		for (int x = 0; x < sprite_columns; x++)
 		{
-			chop_sprite(imgdat, png_w, png_h, mode, origin,
+			chop_sprite(imgdat, png_w, png_h, mode, origin_x, origin_y,
 			            x * frame_w, y * frame_h, frame_w, frame_h);
 		}
 	}
 
+	printf("\n");
+	printf("Conversion complete.\n");
+	printf("--------------------\n");
 	if (mode == CONV_MODE_SP)
 	{
-		printf("%d SP.\n", record_get_pcg_count());
+		printf("SP:\t%d\n", record_get_pcg_count());
 	}
 	else
 	{
-		printf("%d XSP.\n", record_get_pcg_count());
-		printf("%d FRM.\n", record_get_frm_offs() / 8);
-		printf("%d REF.\n", record_get_ref_count());
+		printf("XSP:\t%d\n", record_get_pcg_count());
+		printf("FRM:\t%d\n", record_get_frm_offs() / 8);
+		printf("REF:\t%d\n", record_get_ref_count());
+	}
+	printf("--------------------\n");
+
+	//
+	// Extract the palette.
+	//
+
+	// The first index is always transparent, so we just set it to 0.
+	record_pal_dat(0, 0);
+	for (int i = 1; i < 16; i++)
+	{
+		// LodePNG palette data is sets of four bytes in RGBA order.
+		const int offs = i * 4;
+		const uint8_t r = state.info_png.color.palette[offs + 0];
+		const uint8_t g = state.info_png.color.palette[offs + 1];
+		const uint8_t b = state.info_png.color.palette[offs + 2];
+		// Conversion to X68000 RGB555.
+		const uint16_t entry = (((r >> 3) & 0x1F) << 6) |
+		                       (((g >> 3) & 0x1F) << 11) |
+		                       (((b >> 3) & 0x1F) << 1);
+		record_pal_dat(i, entry);
 	}
 
 	record_complete();
-
-	// Extract the palette.
-	write_palette(&state, outname);
 
 finished:
 	free(imgdat);
