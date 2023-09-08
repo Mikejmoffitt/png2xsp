@@ -142,23 +142,15 @@ bool record_complete(void)
 		set_uint32be((uint8_t *)&header.ref_offs, ref_offs);
 		set_uint32be((uint8_t *)&header.frm_offs, frm_offs);
 		set_uint32be((uint8_t *)&header.pcg_offs, pcg_offs);
-		const size_t header_bytes = sizeof(header) * fwrite(&header, sizeof(header), 1, f);
-//		printf("HDR bytes = %ld\n", header_bytes);
-
-//		printf("REF @ +$%X\n", ref_offs);
-//		printf("FRM @ +$%X\n", frm_offs);
-//		printf("PCG @ +$%X\n", pcg_offs);
+		fwrite(&header, sizeof(header), 1, f);
 
 		// Data blobs are written as-is as they already respected endianness.
 		if (s_param.mode == CONV_MODE_XOBJ)
 		{
-			const size_t ref_bytes = 8 * fwrite(s_ref_dat, 8, s_ref_count, f);
-			const size_t frm_bytes = fwrite(s_frm_dat, 1, s_frm_offs, f);
-//			printf("REF bytes = %ld\n", ref_bytes);
-//			printf("FRM bytes = %ld\n", frm_bytes);
+			fwrite(s_ref_dat, 8, s_ref_count, f);
+			fwrite(s_frm_dat, 1, s_frm_offs, f);
 		}
-		const size_t pcg_bytes = 128 * fwrite(s_pcg_dat, 128, s_pcg_count, f);
-//		printf("PCG bytes = %ld\n", pcg_bytes);
+		fwrite(s_pcg_dat, 128, s_pcg_count, f);
 		fclose(f);
 	}
 	else
