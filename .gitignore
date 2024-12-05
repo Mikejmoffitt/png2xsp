@@ -3,3 +3,4 @@ png2xsp
 *.ref
 *.pcg
 *.frm
+cobj/
