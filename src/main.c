@@ -78,7 +78,7 @@ static void show_usage(const char *prog_name)
 	printf("\n");
 	printf("-b: Bundle\n");
 	printf("    If bundle is set, then instead of generating a number of\n");
-	printf("    files, only a single \"XSB\" bundle is emitted. This is a\n");
+	printf("    files, only a single \"xsb\" bundle is emitted. This is a\n");
 	printf("    binary blob with a small header containing metadata and\n");
 	printf("    offsets to REF, FRM, and XSP within. This allows for one\n");
 	printf("    object set to be loaded from a single file.\n");
@@ -87,15 +87,15 @@ static void show_usage(const char *prog_name)
 	printf("    %s player.png -w 32 -h 48 -y 40 -o out/PLAYER\n", prog_name);
 	printf("\n");
 	printf("\"player.png\" is loaded, and these files will be emitted:\n\n");
-	printf("    out/PLAYER.XSP  <-- Graphical texture data\n");
-	printf("    out/PLAYER.FRM  <-- Frame composition data\n");
-	printf("    out/PLAYER.REF  <-- Frame refrence data\n");
-	printf("    out/PLAYER.PAL  <-- Palette data (in X68000 color format)\n");
+	printf("    out/player.xsp  <-- Graphical texture data\n");
+	printf("    out/player.frm  <-- Frame composition data\n");
+	printf("    out/player.ref  <-- Frame refrence data\n");
+	printf("    out/player.pal  <-- Palette data (in X68000 color format)\n");
 	printf("\n");
 	printf("In a similar example, a bundle is generated:\n");
 	printf("    %s player.png -w 32 -h 48 -y 40 -b -o out/PLAYER\n",
 	       prog_name);
-	printf("    out/PLAYER.XSB  <-- Everything\n");
+	printf("    out/player.xsb  <-- Everything\n");
 }
 
 // Free after usage. NULL on error.
@@ -372,14 +372,14 @@ int main(int argc, char **argv)
 	printf("Output: \"%s\"\n", outname);
 	if (bundle)
 	{
-		printf("--> %s.XSB\n", outname);
+		printf("--> %s.xsb\n", outname);
 	}
 	else
 	{
 		printf("--> %s.%s\n", outname, modestr);
-		printf("--> %s.FRM\n", outname);
-		printf("--> %s.REF\n", outname);
-		printf("--> %s.PAL\n", outname);
+		printf("--> %s.frm\n", outname);
+		printf("--> %s.ref\n", outname);
+		printf("--> %s.pal\n", outname);
 	}
 
 	//
