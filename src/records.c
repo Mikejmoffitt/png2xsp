@@ -122,7 +122,7 @@ bool record_complete(void)
 	char fname_buffer[256];
 	if (s_param.bundle)
 	{
-		snprintf(fname_buffer, sizeof(fname_buffer), "%s.XSB", s_param.outname);
+		snprintf(fname_buffer, sizeof(fname_buffer), "%s.xsb", s_param.outname);
 		FILE *f = fopen(fname_buffer, "wb");
 		if (!f) goto fwberror;
 
@@ -155,13 +155,13 @@ bool record_complete(void)
 	}
 	else
 	{
-		snprintf(fname_buffer, sizeof(fname_buffer), (s_param.mode == CONV_MODE_XOBJ) ? "%s.XSP" : "%s.SP", s_param.outname);
+		snprintf(fname_buffer, sizeof(fname_buffer), (s_param.mode == CONV_MODE_XOBJ) ? "%s.xsp" : "%s.sp", s_param.outname);
 		FILE *f = fopen(fname_buffer, "wb");
 		if (!f) goto fwberror;
 		fwrite(s_pcg_dat, 128, s_pcg_count, f);
 		fclose(f);
 
-		snprintf(fname_buffer, sizeof(fname_buffer), "%s.PAL", s_param.outname);
+		snprintf(fname_buffer, sizeof(fname_buffer), "%s.pal", s_param.outname);
 		f = fopen(fname_buffer, "wb");
 		if (!f) goto fwberror;
 		for (int i = 0; i < ARRAYSIZE(s_pal_dat); i++)
@@ -173,13 +173,13 @@ bool record_complete(void)
 
 		if (s_param.mode == CONV_MODE_XOBJ)
 		{
-			snprintf(fname_buffer, sizeof(fname_buffer), "%s.REF", s_param.outname);
+			snprintf(fname_buffer, sizeof(fname_buffer), "%s.ref", s_param.outname);
 			f = fopen(fname_buffer, "wb");
 			if (!f) goto fwberror;
 			fwrite(s_ref_dat, 8, s_ref_count, f);
 			fclose(f);
 
-			snprintf(fname_buffer, sizeof(fname_buffer), "%s.FRM", s_param.outname);
+			snprintf(fname_buffer, sizeof(fname_buffer), "%s.frm", s_param.outname);
 			f = fopen(fname_buffer, "wb");
 			if (!f) goto fwberror;
 			fwrite(s_frm_dat, 1, s_frm_offs, f);

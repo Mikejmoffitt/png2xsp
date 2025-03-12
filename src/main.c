@@ -146,6 +146,7 @@ static bool claim(const uint8_t *imgdat,
 			if (imgdat[x + (y * iw)] == 0) continue;
 			// Note the row image data was found on, and break out.
 			*row = y;
+			if (sw <= 16) *row = (*row / 16) * 16;
 			break;
 		}
 		// Break out if we are done searching.
@@ -168,6 +169,7 @@ static bool claim(const uint8_t *imgdat,
 			if (imgdat[x + (y * iw)] == 0) continue;
 			// Found it; break out.
 			*col = x;
+			if (sh <= 16) *col = (*col / 16) * 16;
 			break;
 		}
 		// If the column is set, we are done.
